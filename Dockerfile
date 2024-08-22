@@ -4,6 +4,6 @@ WORKDIR /app
 
 COPY . .
 
-EXPOSE 10000
+RUN pip install Flask requests
 
 CMD ["python3", "proxy_server.py"]
