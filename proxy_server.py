@@ -21,7 +21,7 @@ def handle_client(client_socket):
             raise Exception("Empty request")
 
         first_line = lines[0].decode('ascii')
-        method, path, _ = first_line.split(' ')
+        method, path, version = first_line.split(' ')
 
         if method in ["HEAD", "GET"]:
             # Respond to HEAD and GET requests
@@ -38,11 +38,11 @@ def handle_client(client_socket):
         print(f"Connecting to: {host}:{port}")
 
         # Connect to the target server
-        target_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        target_socket.connect((host, port))
+        target_socket = socket.create_connection((host, port))
 
         # Send 200 Connection established
-        client_socket.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+        response = f"{version} 200 Connection established\r\n\r\n"
+        client_socket.sendall(response.encode())
 
         print(f"Connected to target. Starting data forwarding.")
 
@@ -51,6 +51,9 @@ def handle_client(client_socket):
 
     except Exception as e:
         print(f"Error handling client: {e}")
+        # Send error response to client
+        error_response = "HTTP/1.1 500 Internal Server Error\r\n\r\n"
+        client_socket.sendall(error_response.encode())
     finally:
         client_socket.close()
 
