@@ -1,25 +1,45 @@
 from flask import Flask, request, Response
 import requests
+import logging
 
 app = Flask(__name__)
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>', methods=['GET', 'POST', 'HEAD', 'OPTIONS'])
 def proxy(path):
-    url = f"https://{path}"  # Or change to http if needed
-    resp = requests.request(
-        method=request.method,
-        url=url,
-        headers={key: value for key, value in request.headers if key != 'Host'},
-        data=request.get_data(),
-        cookies=request.cookies,
-        allow_redirects=False)
+    # Log the incoming request
+    logging.info(f"Incoming request: {request.method} {request.url}")
 
-    excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
-    headers = [(name, value) for name, value in resp.raw.headers.items() if name.lower() not in excluded_headers]
+    # Construct the target URL
+    url = f"https://{path}"  # Change to http if needed
+    logging.info(f"Target URL: {url}")
 
-    response = Response(resp.content, resp.status_code, headers)
-    return response
+    # Make the request to the target URL
+    try:
+        resp = requests.request(
+            method=request.method,
+            url=url,
+            headers={key: value for key, value in request.headers if key != 'Host'},
+            data=request.get_data(),
+            cookies=request.cookies,
+            allow_redirects=False)
+
+        logging.info(f"Received response: {resp.status_code} {resp.reason}")
+
+        # Filter out specific headers before returning the response
+        excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
+        headers = [(name, value) for name, value in resp.raw.headers.items() if name.lower() not in excluded_headers]
+
+        # Return the response to the client
+        response = Response(resp.content, resp.status_code, headers)
+        return response
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Request to {url} failed: {e}")
+        return Response(f"Error: {str(e)}", status=500)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
