@@ -9,7 +9,8 @@ def handle_client(client_socket):
         while b"\r\n\r\n" not in request:
             chunk = client_socket.recv(4096)
             if not chunk:
-                raise Exception("Empty request received")
+                print("Empty chunk received, closing connection")
+                return
             request += chunk
 
         print(f"Received request: {request.decode('utf-8', 'ignore')}")
@@ -22,9 +23,9 @@ def handle_client(client_socket):
         first_line = lines[0].decode('ascii')
         method, path, _ = first_line.split(' ')
 
-        if method == "HEAD":
-            # Respond to HEAD request (for Render's health check)
-            response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+        if method in ["HEAD", "GET"]:
+            # Respond to HEAD and GET requests
+            response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK"
             client_socket.sendall(response.encode())
             return
 
@@ -39,10 +40,6 @@ def handle_client(client_socket):
         # Connect to the target server
         target_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         target_socket.connect((host, port))
-
-        # If it's HTTPS, wrap the socket
-        if port == 443:
-            target_socket = ssl.wrap_socket(target_socket)
 
         # Send 200 Connection established
         client_socket.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
@@ -70,6 +67,7 @@ def forward(source, destination, direction):
         while True:
             data = source.recv(4096)
             if not data:
+                print(f"No more data to forward {direction}")
                 break
             print(f"Forwarding data {direction}: {len(data)} bytes")
             destination.sendall(data)
@@ -80,7 +78,7 @@ def forward(source, destination, direction):
         destination.close()
 
 def main():
-    port = int(os.environ.get('PORT', 80))
+    port = int(os.environ.get('PORT', 10000))
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(('0.0.0.0', port))
