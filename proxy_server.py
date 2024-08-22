@@ -37,8 +37,12 @@ def handle_client(client_socket):
 
         print(f"Connecting to: {host}:{port}")
 
-        # Connect to the target server
-        target_socket = socket.create_connection((host, port))
+        # Connect to the target server with SSL/TLS if required
+        context = ssl.create_default_context()
+        target_socket = context.wrap_socket(
+            socket.create_connection((host, port)),
+            server_hostname=host
+        )
 
         # Send 200 Connection established
         response = f"{version} 200 Connection established\r\n\r\n"
