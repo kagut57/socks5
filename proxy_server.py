@@ -7,10 +7,25 @@ def handle_client(client_socket):
     try:
         # SOCKS5 greeting
         greeting = client_socket.recv(262)
-        if not greeting or len(greeting) < 2 or greeting[0] != 0x05:
-            raise Exception("Invalid SOCKS5 greeting")
+        print(f"Received greeting: {greeting.hex()}")
+        
+        if not greeting:
+            raise Exception("Empty greeting received")
+        
+        if len(greeting) < 2:
+            raise Exception(f"Greeting too short: {len(greeting)} bytes")
+        
+        if greeting[0] != 0x05:
+            raise Exception(f"Invalid SOCKS version: {greeting[0]}")
+        
+        # Check the number of authentication methods
+        nmethods = greeting[1]
+        if len(greeting) != nmethods + 2:
+            raise Exception(f"Greeting length mismatch: expected {nmethods + 2}, got {len(greeting)}")
+        
+        # For now, we'll always choose "no authentication required"
         client_socket.sendall(b"\x05\x00")
-
+        
         # SOCKS5 connection request
         request = client_socket.recv(4)
         if len(request) < 4:
@@ -29,6 +44,8 @@ def handle_client(client_socket):
 
         target_port = struct.unpack('!H', client_socket.recv(2))[0]
 
+        print(f"Connecting to: {target_addr}:{target_port}")
+
         # Connect to the target server
         target_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         target_socket.connect((target_addr, target_port))
@@ -38,6 +55,8 @@ def handle_client(client_socket):
 
         # Send connection response
         client_socket.sendall(struct.pack("!BBBBIH", 5, 0, 0, 1, addr, port))
+
+        print(f"Connected to target. Starting data forwarding.")
 
         # Start forwarding data
         client_to_target = threading.Thread(target=forward, args=(client_socket, target_socket))
@@ -61,19 +80,23 @@ def forward(source, destination):
     source.close()
     destination.close()
 
+import os
+
 def main():
+    port = int(os.environ.get('PORT', 1080))
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(('0.0.0.0', 1080))
+    server.bind(('0.0.0.0', port))
     server.listen(5)
 
-    print("SOCKS5 proxy server is running on 0.0.0.0:1080")
+    print(f"SOCKS5 proxy server is running on 0.0.0.0:{port}")
 
     while True:
         client_socket, addr = server.accept()
         print(f"Accepted connection from {addr[0]}:{addr[1]}")
         client_handler = threading.Thread(target=handle_client, args=(client_socket,))
         client_handler.start()
+        print(f"Started handler thread for {addr[0]}:{addr[1]}")
 
 if __name__ == "__main__":
     main()
