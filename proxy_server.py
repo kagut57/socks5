@@ -1,50 +1,64 @@
-from flask import Flask, request, Response
 import requests
 import logging
 import os
+from flask import Flask, request, redirect, jsonify
+from urllib.parse import urlparse, urlunparse
 
 app = Flask(__name__)
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+@app.route('/favicon.ico')
+def favicon():
+    # Returning 204 No Content for favicon requests or you could serve a local favicon file
+    return '', 204
 
 @app.route('/', defaults={'path': ''})
-@app.route('/<path:path>', methods=['GET', 'POST', 'HEAD', 'OPTIONS'])
+@app.route('/<path:path>')
 def proxy(path):
-    # Log the incoming request
-    logging.info(f"Incoming request: {request.method} {request.url}")
-
-    # Ensure the path starts with a valid domain
-    if not path:
-        logging.error("No valid path supplied.")
-        return Response("Error: No valid path supplied.", status=400)
-
-    # Construct the target URL, assuming the full URL is provided in the path
-    url = f"https://{path}"
-    logging.info(f"Target URL: {url}")
-
+    # Extract the target URL from the query parameters
+    target_url = request.args.get('url')
+    
+    if not target_url:
+        return "No valid URL supplied.", 400
+    
+    # Parse the URL to ensure it’s correctly formatted
+    parsed_url = urlparse(target_url)
+    
+    # If the URL does not include a scheme, add http by default
+    if not parsed_url.scheme:
+        target_url = 'http://' + target_url
+        parsed_url = urlparse(target_url)
+    
+    # Reconstruct the target URL to ensure it is correctly formed
+    target_url = urlunparse(parsed_url)
+    
     try:
+        # Forward the request to the target URL
         resp = requests.request(
             method=request.method,
-            url=url,
-            headers={key: value for key, value in request.headers if key != 'Host'},
+            url=target_url,
+            headers={key: value for (key, value) in request.headers if key != 'Host'},
             data=request.get_data(),
             cookies=request.cookies,
-            allow_redirects=False)
-
-        logging.info(f"Received response: {resp.status_code} {resp.reason}")
-
-        # Filter out specific headers before returning the response
+            allow_redirects=False
+        )
+        
+        # Prepare the response to forward back to the client
         excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
-        headers = [(name, value) for name, value in resp.raw.headers.items() if name.lower() not in excluded_headers]
+        headers = [(name, value) for (name, value) in resp.raw.headers.items() if name.lower() not in excluded_headers]
+        response = resp.content
+        
+        # Handle redirects if necessary
+        if 300 <= resp.status_code < 400:
+            location = resp.headers.get('Location')
+            if location:
+                location = location.replace(parsed_url.netloc, request.host)
+                return redirect(location, code=resp.status_code)
 
-        # Return the response to the client
-        response = Response(resp.content, resp.status_code, headers)
-        return response
+        return response, resp.status_code, headers
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Request to {url} failed: {e}")
-        return Response(f"Error: {str(e)}", status=500)
+        return f"Request to {target_url} failed: {str(e)}", 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+    # Running the Flask app
+    app.run(host='0.0.0.0', port=10000)
