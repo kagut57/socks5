@@ -1,6 +1,7 @@
 import socket
 import threading
 import os
+import ssl
 
 def handle_client(client_socket):
     try:
@@ -11,7 +12,7 @@ def handle_client(client_socket):
                 raise Exception("Empty request received")
             request += chunk
 
-        print(f"Received request: {request}")
+        print(f"Received request: {request.decode('utf-8', 'ignore')}")
 
         # Parse the request
         lines = request.split(b"\r\n")
@@ -39,6 +40,10 @@ def handle_client(client_socket):
         target_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         target_socket.connect((host, port))
 
+        # If it's HTTPS, wrap the socket
+        if port == 443:
+            target_socket = ssl.wrap_socket(target_socket)
+
         # Send 200 Connection established
         client_socket.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
 
@@ -53,22 +58,23 @@ def handle_client(client_socket):
         client_socket.close()
 
 def forward_data(client_socket, target_socket):
-    client_to_target = threading.Thread(target=forward, args=(client_socket, target_socket))
-    target_to_client = threading.Thread(target=forward, args=(target_socket, client_socket))
+    client_to_target = threading.Thread(target=forward, args=(client_socket, target_socket, "client -> target"))
+    target_to_client = threading.Thread(target=forward, args=(target_socket, client_socket, "target -> client"))
     client_to_target.start()
     target_to_client.start()
     client_to_target.join()
     target_to_client.join()
 
-def forward(source, destination):
+def forward(source, destination, direction):
     try:
         while True:
             data = source.recv(4096)
             if not data:
                 break
+            print(f"Forwarding data {direction}: {len(data)} bytes")
             destination.sendall(data)
     except Exception as e:
-        print(f"Error forwarding data: {e}")
+        print(f"Error forwarding data {direction}: {e}")
     finally:
         source.close()
         destination.close()
