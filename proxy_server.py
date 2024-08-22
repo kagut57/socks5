@@ -2,6 +2,10 @@ import socket
 import threading
 import os
 import ssl
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def handle_client(client_socket):
     try:
@@ -9,11 +13,11 @@ def handle_client(client_socket):
         while b"\r\n\r\n" not in request:
             chunk = client_socket.recv(4096)
             if not chunk:
-                print("Empty chunk received, closing connection")
+                logging.info("Empty chunk received, closing connection")
                 return
             request += chunk
 
-        print(f"Received request: {request.decode('utf-8', 'ignore')}")
+        logging.info(f"Received request:\n{request.decode('utf-8', 'ignore')}")
 
         # Parse the request
         lines = request.split(b"\r\n")
@@ -27,6 +31,7 @@ def handle_client(client_socket):
             # Respond to HEAD and GET requests
             response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK"
             client_socket.sendall(response.encode())
+            logging.info(f"Responded to {method} request with 200 OK")
             return
 
         if method != "CONNECT":
@@ -35,7 +40,7 @@ def handle_client(client_socket):
         host, port = path.split(':')
         port = int(port)
 
-        print(f"Connecting to: {host}:{port}")
+        logging.info(f"Connecting to target server {host}:{port}")
 
         # Connect to the target server with SSL/TLS if required
         context = ssl.create_default_context()
@@ -48,13 +53,13 @@ def handle_client(client_socket):
         response = f"{version} 200 Connection established\r\n\r\n"
         client_socket.sendall(response.encode())
 
-        print(f"Connected to target. Starting data forwarding.")
+        logging.info(f"Connection established with target. Starting data forwarding.")
 
         # Start forwarding data
         forward_data(client_socket, target_socket)
 
     except Exception as e:
-        print(f"Error handling client: {e}")
+        logging.error(f"Error handling client: {e}")
         # Send error response to client
         error_response = "HTTP/1.1 500 Internal Server Error\r\n\r\n"
         client_socket.sendall(error_response.encode())
@@ -74,12 +79,12 @@ def forward(source, destination, direction):
         while True:
             data = source.recv(4096)
             if not data:
-                print(f"No more data to forward {direction}")
+                logging.info(f"No more data to forward {direction}")
                 break
-            print(f"Forwarding data {direction}: {len(data)} bytes")
+            logging.debug(f"Forwarding data {direction}: {len(data)} bytes")
             destination.sendall(data)
     except Exception as e:
-        print(f"Error forwarding data {direction}: {e}")
+        logging.error(f"Error forwarding data {direction}: {e}")
     finally:
         source.close()
         destination.close()
@@ -91,14 +96,14 @@ def main():
     server.bind(('0.0.0.0', port))
     server.listen(5)
 
-    print(f"HTTP proxy server is running on 0.0.0.0:{port}")
+    logging.info(f"HTTP proxy server is running on 0.0.0.0:{port}")
 
     while True:
         client_socket, addr = server.accept()
-        print(f"Accepted connection from {addr[0]}:{addr[1]}")
+        logging.info(f"Accepted connection from {addr[0]}:{addr[1]}")
         client_handler = threading.Thread(target=handle_client, args=(client_socket,))
         client_handler.start()
-        print(f"Started handler thread for {addr[0]}:{addr[1]}")
+        logging.info(f"Started handler thread for {addr[0]}:{addr[1]}")
 
 if __name__ == "__main__":
     main()
