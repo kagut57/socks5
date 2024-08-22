@@ -14,11 +14,15 @@ def proxy(path):
     # Log the incoming request
     logging.info(f"Incoming request: {request.method} {request.url}")
 
-    # Construct the target URL
-    url = f"https://{path}"  # Change to http if needed
+    # Ensure the path starts with a valid domain
+    if not path:
+        logging.error("No valid path supplied.")
+        return Response("Error: No valid path supplied.", status=400)
+
+    # Construct the target URL, assuming the full URL is provided in the path
+    url = f"https://{path}"
     logging.info(f"Target URL: {url}")
 
-    # Make the request to the target URL
     try:
         resp = requests.request(
             method=request.method,
@@ -43,4 +47,4 @@ def proxy(path):
         return Response(f"Error: {str(e)}", status=500)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
